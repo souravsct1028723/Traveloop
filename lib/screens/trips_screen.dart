@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:traveloop/widgets/header.dart';
 import '../theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class TripsScreen extends StatefulWidget {
   const TripsScreen({super.key});
@@ -12,86 +13,245 @@ class TripsScreen extends StatefulWidget {
 
 class _TripsScreenState extends State<TripsScreen> {
   int _filter = 0;
+  List<Map<String, dynamic>> _trips = [];
+  bool isLoading = true;
 
-  final _trips = [
-    {
-      'title': 'Italian Coastline Tour',
-      'dates': 'Oct 12 - Oct 20, 2024',
-      'status': 'Upcoming',
-      'days': '8',
-      'cities': 'Rome, Amalfi, Naples',
-      'image': 'https://lh3.googleusercontent.com/aida-public/AB6AXuAA4B7pEOgYEpoq3IqPA4Ax_BjVNjv4Uys6irp7DV7E5Wlq37wsRqaM6E3cLtzWsfgfAyeRW2LkbGkKclYRvfD1itsJKFyFfLERYHHJgXfgBZZajoI7AWn88gG1Nb8YDT_ByO1dBnqZiO-EmCuBDAWfqgvgjBrdcASZoh4EFlsm5E9jgviQn4VzQKq-KN9Rz3Pzi-brSZNljUMaTj8lcwazJWHx2MyX0vK5323KiwjnSyn5mv6XmGbzuekBNqsH4KRQjCjE__WEhPfR',
-      'isPast': false,
-    },
-    {
-      'title': 'Japan Cherry Blossom',
-      'dates': 'Mar 25 - Apr 5, 2024',
-      'status': 'Past',
-      'days': '11',
-      'cities': 'Tokyo, Kyoto, Osaka',
-      'image': 'https://lh3.googleusercontent.com/aida-public/AB6AXuBjXv_9iaoXoxHmy36ex65Ky8k8_3reu4o-DR9OtVgj06PQdyYFhXG3f9gYPliBgFbsqdv_7KejBHPPavanFXethPVff3XJumpHMnyU6870Gk_mAVD7k8vOojrNUrA-hNGH2-yPdfjT6cE8HahzzPgeQLb2sBFuqSYhsNpy6DmBp9CGPgmCdw8j8FPZxfl1nbLdOSJ60RofUEC3nnOYKvuN1smJcwHG59imOSvBrzbhs4IKPkhg35HkwyCYGrkbaJMQdNeqevNVg6O9',
-      'isPast': true,
-    },
-    {
-      'title': 'Lisbon Weekend Getaway',
-      'dates': 'Jan 10 - Jan 14, 2024',
-      'status': 'Past',
-      'days': '4',
-      'cities': 'Lisbon, Sintra',
-      'image': 'https://lh3.googleusercontent.com/aida-public/AB6AXuBZC4DkmuawC0N-RCpfFDgr5WAOFs6od77apZRDt1cy-ZWXBMQq3y2qUwAdN1jf1XCTFLqk3rbld8dZ4eRBWC3hYAsnVDROvlTsw9QXQSGKfIvI9yj5dPXHjSr2o9SJs4BFs6_FYfPs1pV3m-ibcfbYq-UrHaZjBdoXcnllSv-p3FRFFs-1_D8i9s-bVrfuTWpP0A4yM5xh-IfTAbZzb8CnU8Mm4tcjbGr9HRbmo6I_Y9-BL7dUQsC0O0zHv_P4rcfRY6AMojEGl8xs',
-      'isPast': true,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    fetchTrips();
+  }
 
   List<Map<String, dynamic>> get _filtered {
-    if (_filter == 0) return _trips.cast();
-    if (_filter == 1) return _trips.where((t) => t['isPast'] == false).toList().cast();
-    return _trips.where((t) => t['isPast'] == true).toList().cast();
+    final now = DateTime.now();
+
+      final mappedTrips = _trips.map((trip) {
+      final endDate = DateTime.parse(trip['end_date']);
+
+      return {
+        ...trip,
+        'isPast': endDate.isBefore(now),
+        'status': endDate.isBefore(now) ? 'Past' : 'Upcoming',
+        'days': DateTime.parse(trip['end_date'])
+            .difference(DateTime.parse(trip['start_date']))
+            .inDays
+            .toString(),
+        'cities': trip['description'] ?? '',
+        'image': trip['cover_image'] ??
+            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e',
+        'dates': '${trip['start_date']} - ${trip['end_date']}',
+      };
+    }).toList();
+
+    if (_filter == 0) return mappedTrips;
+
+    if (_filter == 1) {
+      return mappedTrips.where((t) => t['isPast'] == false).toList();
+    }
+
+    return mappedTrips.where((t) => t['isPast'] == true).toList();
+  }
+
+  Future<void> fetchTrips() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+
+      if (user == null) return;
+
+      final response = await Supabase.instance.client
+          .from('trips')
+          .select()
+          .eq('user_id', user.id)
+          .order('start_date');
+
+      setState(() {
+        _trips = List<Map<String, dynamic>>.from(response);
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() => isLoading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          const TraveloopHeader(),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('My Trips', style: GoogleFonts.plusJakartaSans(fontSize: 32, fontWeight: FontWeight.w800, color: TraveloopColors.primary, letterSpacing: -0.64)),
-                  Text('Manage your past and upcoming adventures', style: GoogleFonts.plusJakartaSans(fontSize: 16, color: TraveloopColors.onSurfaceVariant)),
-                  const SizedBox(height: 16),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: TraveloopColors.secondary,
+        child: const Icon(Icons.add, color: TraveloopColors.surface,),
+        onPressed: () async {
+          final titleController = TextEditingController();
+          final descriptionController = TextEditingController();
+
+          DateTime? startDate;
+          DateTime? endDate;
+
+          await showDialog(
+            context: context,
+            builder: (context) {
+              return StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return AlertDialog(
+                    title: const Text('Create Trip'),
+                    content: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: titleController,
+                            decoration: const InputDecoration(
+                              labelText: 'Trip Title',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: descriptionController,
+                            decoration: const InputDecoration(
+                              labelText: 'Description',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ListTile(
+                            title: Text(
+                              startDate == null
+                                  ? 'Select Start Date'
+                                  : startDate.toString().split(' ')[0],
+                            ),
+                            trailing: const Icon(Icons.calendar_month),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                firstDate: DateTime(2024),
+                                lastDate: DateTime(2030),
+                                initialDate: DateTime.now(),
+                              );
+
+                              if (picked != null) {
+                                setDialogState(() {
+                                  startDate = picked;
+                                });
+                              }
+                            },
+                          ),
+                          ListTile(
+                            title: Text(
+                              endDate == null
+                                  ? 'Select End Date'
+                                  : endDate.toString().split(' ')[0],
+                            ),
+                            trailing: const Icon(Icons.calendar_month),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                firstDate: DateTime(2024),
+                                lastDate: DateTime(2030),
+                                initialDate: DateTime.now(),
+                              );
+
+                              if (picked != null) {
+                                setDialogState(() {
+                                  endDate = picked;
+                                });
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          if (titleController.text.isEmpty ||
+                              startDate == null ||
+                              endDate == null) {
+                            return;
+                          }
+
+                          await Supabase.instance.client.from('trips').insert({
+                            'user_id':
+                                Supabase.instance.client.auth.currentUser!.id,
+                            'title': titleController.text,
+                            'description': descriptionController.text,
+                            'start_date': startDate!.toIso8601String(),
+                            'end_date': endDate!.toIso8601String(),
+                          });
+
+                          if (!context.mounted) return;
+
+                          Navigator.pop(context);
+
+                          fetchTrips();
+                        },
+                        child: const Text('Create'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : CustomScrollView(
+              slivers: [
+                const TraveloopHeader(),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _chip('All Trips', 0),
-                        const SizedBox(width: 8),
-                        _chip('Upcoming', 1),
-                        const SizedBox(width: 8),
-                        _chip('Past', 2),
+                        Text('My Trips',
+                            style: GoogleFonts.plusJakartaSans(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                color: TraveloopColors.primary,
+                                letterSpacing: -0.64)),
+                        Text('Manage your past and upcoming adventures',
+                            style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16,
+                                color: TraveloopColors.onSurfaceVariant)),
+                        const SizedBox(height: 16),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _chip('All Trips', 0),
+                              const SizedBox(width: 8),
+                              _chip('Upcoming', 1),
+                              const SizedBox(width: 8),
+                              _chip('Past', 2),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                ],
-              ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.all(20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _TripCard(trip: _filtered[i]),
+                      childCount: _filtered.length,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.all(20),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _TripCard(trip: _filtered[i]),
-                childCount: _filtered.length,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -102,14 +262,19 @@ class _TripsScreenState extends State<TripsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? TraveloopColors.primary : TraveloopColors.surfaceContainerHigh,
+          color: isSelected
+              ? TraveloopColors.primary
+              : TraveloopColors.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           label,
           style: GoogleFonts.plusJakartaSans(
-            fontSize: 12, fontWeight: FontWeight.w600,
-            color: isSelected ? TraveloopColors.onPrimary : TraveloopColors.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? TraveloopColors.onPrimary
+                : TraveloopColors.onSurfaceVariant,
             letterSpacing: 0.48,
           ),
         ),
@@ -130,8 +295,14 @@ class _TripCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: TraveloopColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: TraveloopColors.outlineVariant.withValues(alpha: 0.3)),
-        boxShadow: [BoxShadow(color: const Color(0xFF000109).withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4))],
+        border: Border.all(
+            color: TraveloopColors.outlineVariant.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF000109).withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4))
+        ],
       ),
       clipBehavior: Clip.hardEdge,
       child: Row(
@@ -139,8 +310,11 @@ class _TripCard extends StatelessWidget {
           SizedBox(
             width: 120,
             height: 140,
-            child: Image.network(trip['image']!, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(color: TraveloopColors.surfaceContainer),
+            child: Image.network(
+              trip['image']!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  Container(color: TraveloopColors.surfaceContainer),
             ),
           ),
           Expanded(
@@ -153,43 +327,76 @@ class _TripCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: isPast ? TraveloopColors.surfaceContainer : TraveloopColors.secondaryFixed,
+                          color: isPast
+                              ? TraveloopColors.surfaceContainer
+                              : TraveloopColors.secondaryFixed,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           trip['status']!.toUpperCase(),
                           style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                            color: isPast ? TraveloopColors.onSurfaceVariant : TraveloopColors.onSecondaryFixedVariant,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: isPast
+                                ? TraveloopColors.onSurfaceVariant
+                                : TraveloopColors.onSecondaryFixedVariant,
                           ),
                         ),
                       ),
                       Row(
                         children: [
-                          IconButton(onPressed: () {}, icon: const Icon(Icons.share_outlined, size: 18), visualDensity: VisualDensity.compact, color: TraveloopColors.onSurfaceVariant),
-                          IconButton(onPressed: () {}, icon: const Icon(Icons.edit_outlined, size: 18), visualDensity: VisualDensity.compact, color: TraveloopColors.onSurfaceVariant),
+                          IconButton(
+                              onPressed: () {},
+                              icon: const Icon(Icons.share_outlined, size: 18),
+                              visualDensity: VisualDensity.compact,
+                              color: TraveloopColors.onSurfaceVariant),
+                          IconButton(
+                              onPressed: () {},
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              visualDensity: VisualDensity.compact,
+                              color: TraveloopColors.onSurfaceVariant),
                         ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(trip['title']!, style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.w700, color: TraveloopColors.primary)),
+                  Text(trip['title']!,
+                      style: GoogleFonts.plusJakartaSans(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: TraveloopColors.primary)),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_month_outlined, size: 14, color: TraveloopColors.onSurfaceVariant),
+                      const Icon(Icons.calendar_month_outlined,
+                          size: 14, color: TraveloopColors.onSurfaceVariant),
                       const SizedBox(width: 4),
-                      Expanded(child: Text(trip['dates']!, style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w600, color: TraveloopColors.onSurfaceVariant, letterSpacing: 0.48), overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                          child: Text(trip['dates']!,
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: TraveloopColors.onSurfaceVariant,
+                                  letterSpacing: 0.48),
+                              overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined, size: 14, color: TraveloopColors.onSurfaceVariant),
+                      const Icon(Icons.notes,
+                          size: 14, color: TraveloopColors.onSurfaceVariant),
                       const SizedBox(width: 4),
-                      Expanded(child: Text(trip['cities']!, style: GoogleFonts.plusJakartaSans(fontSize: 12, color: TraveloopColors.onSurfaceVariant), overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                          child: Text(trip['cities']!,
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  color: TraveloopColors.onSurfaceVariant),
+                              overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -208,8 +415,14 @@ class _TripCard extends StatelessWidget {
   }
 
   Widget _tag(String text) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(color: TraveloopColors.surfaceVariant.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(4)),
-    child: Text(text.toUpperCase(), style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.w700, color: TraveloopColors.onSurfaceVariant)),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+            color: TraveloopColors.surfaceVariant.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(4)),
+        child: Text(text.toUpperCase(),
+            style: GoogleFonts.plusJakartaSans(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: TraveloopColors.onSurfaceVariant)),
+      );
 }
