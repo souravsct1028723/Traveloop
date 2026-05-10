@@ -25,7 +25,16 @@ class _TripsScreenState extends State<TripsScreen> {
   List<Map<String, dynamic>> get _filtered {
     final now = DateTime.now();
 
-      final mappedTrips = _trips.map((trip) {
+    final fallbackImages = [
+      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e', // beach
+      'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b', // mountains
+      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee'  // valley
+    ];
+
+    final mappedTrips = _trips.asMap().entries.map((entry) {
+      final index = entry.key;
+      final trip = entry.value;
+
       final endDate = DateTime.parse(trip['end_date']);
 
       return {
@@ -38,7 +47,7 @@ class _TripsScreenState extends State<TripsScreen> {
             .toString(),
         'cities': trip['description'] ?? '',
         'image': trip['cover_image'] ??
-            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e',
+            fallbackImages[index % fallbackImages.length],
         'dates': '${trip['start_date']} - ${trip['end_date']}',
       };
     }).toList();
@@ -82,7 +91,10 @@ class _TripsScreenState extends State<TripsScreen> {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         backgroundColor: TraveloopColors.secondary,
-        child: const Icon(Icons.add, color: TraveloopColors.surface,),
+        child: const Icon(
+          Icons.add,
+          color: TraveloopColors.surface,
+        ),
         onPressed: () async {
           final titleController = TextEditingController();
           final descriptionController = TextEditingController();

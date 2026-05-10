@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:traveloop/widgets/header.dart';
 import '../theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../screens/trips_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -12,22 +14,9 @@ class ExploreScreen extends StatefulWidget {
 
 class _ExploreScreenState extends State<ExploreScreen> {
   // Recent trips data
-  final _recentTrips = [
-    {
-      'name': 'Tokyo & Kyoto',
-      'dates': 'Apr 12 - Apr 24 • 12 Days',
-      'status': 'COMPLETE',
-      'image':
-          'https://lh3.googleusercontent.com/aida-public/AB6AXuBjXv_9iaoXoxHmy36ex65Ky8k8_3reu4o-DR9OtVgj06PQdyYFhXG3f9gYPliBgFbsqdv_7KejBHPPavanFXethPVff3XJumpHMnyU6870Gk_mAVD7k8vOojrNUrA-hNGH2-yPdfjT6cE8HahzzPgeQLb2sBFuqSYhsNpy6DmBp9CGPgmCdw8j8FPZxfl1nbLdOSJ60RofUEC3nnOYKvuN1smJcwHG59imOSvBrzbhs4IKPkhg35HkwyCYGrkbaJMQdNeqevNVg6O9',
-    },
-    {
-      'name': 'Greek Islands',
-      'dates': 'Jun 05 - Jun 15',
-      'status': '',
-      'image':
-          'https://lh3.googleusercontent.com/aida-public/AB6AXuBuNrFxGgm28E0SWTpNxM3sDAEgb8oN_bePa8I9mLOPJhT3ghT2S1uJwTfcT5-5ZYuO2vwS-xDilFBSGV6nK_Gd0N6JR7M2MVqBSfz6ot2mUiD0PzSB0bJL9z4Z0SYiXGSUqnF9pB7NmU1CKCopk3Q0YbJf5VL3QKyBSXvCl7FE4eFbCqyMbP29Ct2v4hA4R82JhY_KYrGVW6s9cBf_0SJz0gB6L4vQ1f87W3tM',
-    },
-  ];
+  List<Map<String, dynamic>> _recentTrips = [];
+  bool isLoading = true;
+  String userName = 'Traveler';
 
   // Recommended destinations
   final _recommended = [
@@ -62,123 +51,186 @@ class _ExploreScreenState extends State<ExploreScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    fetchTrips();
+  }
+
+  Future<void> fetchTrips() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+
+      if (user == null) return;
+
+      final response = await Supabase.instance.client
+          .from('trips')
+          .select()
+          .eq('user_id', user.id)
+          .order('created_at', ascending: false)
+          .limit(5);
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .single();
+
+      setState(() {
+        userName = profile['full_name'] ?? 'Traveler';
+
+        _recentTrips = List<Map<String, dynamic>>.from(
+          response.map((trip) {
+            final start = DateTime.parse(trip['start_date']);
+            final end = DateTime.parse(trip['end_date']);
+
+            final days = end.difference(start).inDays;
+
+            return {
+              'name': trip['title'],
+              'dates': '${trip['start_date']} • $days Days',
+              'status': end.isBefore(DateTime.now()) ? 'COMPLETED' : 'UPCOMING',
+              'image': trip['cover_image'] ??
+                  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e',
+            };
+          }),
+        );
+
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() => isLoading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: TraveloopColors.surface,
-      body: Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              // App Bar
-            const TraveloopHeader(),
-            
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Hello, Alex!', style: GoogleFonts.plusJakartaSans(fontSize: 32, fontWeight: FontWeight.w800, color: TraveloopColors.primary, letterSpacing: -0.64)),
-                      Text(
-                        'Where should we go next?',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 15,
-                          color: TraveloopColors.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
+              children: [
+                CustomScrollView(
+                  slivers: [
+                    // App Bar
+                    const TraveloopHeader(),
 
-                      // Budget Card
-                      _BudgetCard(),
-                      const SizedBox(height: 28),
-
-                      // Recent Trips Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Recent Trips',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: TraveloopColors.primary,
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Hello, $userName!',
+                                style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w800,
+                                    color: TraveloopColors.primary,
+                                    letterSpacing: -0.64)),
+                            Text(
+                              'Where should we go next?',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                color: TraveloopColors.onSurfaceVariant,
+                              ),
                             ),
-                          ),
-                          Text(
-                            'View All',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: TraveloopColors.secondary,
+                            const SizedBox(height: 20),
+
+                            _BudgetCard(),
+                            const SizedBox(height: 28),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Your Trips',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: TraveloopColors.primary,
+                                  ),
+                                ),
+                                Text(
+                                  'View All',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: TraveloopColors.secondary,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
+                            const SizedBox(height: 14),
 
-                      // Recent Trips horizontal scroll
-                      SizedBox(
-                        height: 200,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _recentTrips.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 12),
-                          itemBuilder: (context, i) =>
-                              _TripCard(trip: _recentTrips[i]),
+                            // Recent Trips horizontal scroll
+                            SizedBox(
+                              height: 200,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _recentTrips.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 12),
+                                itemBuilder: (context, i) =>
+                                    _TripCard(trip: _recentTrips[i]),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Plan New Trip Banner
+                            _PlanTripBanner(),
+                            const SizedBox(height: 28),
+
+                            // Recommended for You
+                            Text(
+                              'Recommended for You',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: TraveloopColors.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+
+                            // Recommended grid
+                            _RecommendedGrid(items: _recommended),
+                            const SizedBox(height: 100),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 24),
+                    ),
+                  ],
+                ),
 
-                      // Plan New Trip Banner
-                      _PlanTripBanner(),
-                      const SizedBox(height: 28),
-
-                      // Recommended for You
-                      Text(
-                        'Recommended for You',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: TraveloopColors.primary,
+                // Floating map button
+                Positioned(
+                  right: 20,
+                  bottom: 80,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: TraveloopColors.secondary,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              TraveloopColors.secondary.withValues(alpha: 0.4),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Recommended grid
-                      _RecommendedGrid(items: _recommended),
-                      const SizedBox(height: 100),
-                    ],
+                      ],
+                    ),
+                    child: const Icon(Icons.map_outlined,
+                        color: Colors.white, size: 26),
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          // Floating map button
-          Positioned(
-            right: 20,
-            bottom: 80,
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: TraveloopColors.secondary,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: TraveloopColors.secondary.withValues(alpha: 0.4),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child:
-                  const Icon(Icons.map_outlined, color: Colors.white, size: 26),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -277,7 +329,7 @@ class _BudgetCard extends StatelessWidget {
 // ─── Trip Card ────────────────────────────────────────────────────────────────
 
 class _TripCard extends StatelessWidget {
-  final Map<String, String> trip;
+  final Map<String, dynamic> trip;
   const _TripCard({required this.trip});
 
   @override
@@ -327,7 +379,9 @@ class _TripCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: TraveloopColors.secondary,
+                  color: trip['status'] == 'COMPLETED'
+                      ? Colors.green
+                      : TraveloopColors.secondary,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -407,7 +461,14 @@ class _PlanTripBanner extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TripsScreen(),
+                ),
+              );
+            },
             icon: const Icon(Icons.add_circle_outline, size: 18),
             label: const Text('Plan New Trip'),
             style: ElevatedButton.styleFrom(
